@@ -326,38 +326,13 @@ async function fetchDesc(ref, name) {
   const res = await fetch('/api/claude', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'perplexity/sonar',
-      messages: [
-        {
-          role: 'user',
-          content: `Busca en nike.com/es el producto Nike con referencia "${ref}" (nombre: "${name}") y devuelve EXACTAMENTE 4 bullet points en español con sus características oficiales.
-
-Formato exacto:
-
-- [Primera característica]
-
-- [Segunda característica]
-
-- [Tercera característica]
-
-- [Cuarta característica]
-
-SOLO los 4 bullets, nada más.`
-        }
-      ]
-    })
+    body: JSON.stringify({ ref, name })
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `HTTP ${res.status}`);
-  }
-
   const data = await res.json();
-  const text = data.choices?.[0]?.message?.content?.trim();
-  if (!text) throw new Error('Respuesta vacía');
-  return text;
+
+  if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+  return data.description;
 }
 
 // ── Download ───────────────────────────────────────────────────────────────
