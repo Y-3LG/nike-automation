@@ -327,11 +327,13 @@ async function fetchDesc(ref, name) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'gpt-4o',
-      tools: [{ type: 'web_search_preview' }],
-      input: `Busca la descripción oficial del producto Nike con referencia "${ref}" (nombre: "${name}") en nike.com/es.
+      model: 'perplexity/sonar',
+      messages: [
+        {
+          role: 'user',
+          content: `Busca en nike.com/es el producto Nike con referencia "${ref}" (nombre: "${name}") y devuelve EXACTAMENTE 4 bullet points en español con sus características oficiales.
 
-Devuelve EXACTAMENTE 4 bullet points en español con este formato:
+Formato exacto:
 
 - [Primera característica]
 
@@ -341,7 +343,9 @@ Devuelve EXACTAMENTE 4 bullet points en español con este formato:
 
 - [Cuarta característica]
 
-SOLO los 4 bullets, nada más. Sin introducción ni conclusión.`
+SOLO los 4 bullets, nada más.`
+        }
+      ]
     })
   });
 
@@ -351,14 +355,7 @@ SOLO los 4 bullets, nada más. Sin introducción ni conclusión.`
   }
 
   const data = await res.json();
-  const text = data.output
-    ?.filter(b => b.type === 'message')
-    ?.flatMap(b => b.content)
-    ?.filter(c => c.type === 'output_text')
-    ?.map(c => c.text)
-    ?.join('\n')
-    ?.trim();
-
+  const text = data.choices?.[0]?.message?.content?.trim();
   if (!text) throw new Error('Respuesta vacía');
   return text;
 }
