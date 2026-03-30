@@ -323,38 +323,42 @@ async function startProcessing() {
 function stopProcessing() { shouldStop = true; }
 
 async function fetchDesc(ref, name) {
-  const prompt = `Eres un experto en productos Nike. Busca la descripción oficial del producto Nike con referencia "${ref}" (nombre: "${name}") en nike.com/es buscando en Google: "${ref} site:nike.com".
-
-Devuelve EXACTAMENTE 4 bullet points en español con este formato:
-
-• [Primera característica]
-
-• [Segunda característica]
-
-• [Tercera característica]
-
-• [Cuarta característica]
-
-SOLO los 4 bullets, nada más. Sin introducción ni conclusión.`;
-
   const res = await fetch('/api/claude', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-      messages: [{ role: 'user', content: prompt }]
+      model: 'gpt-4o',
+      tools: [{ type: 'web_search_preview' }],
+      input: `Busca la descripción oficial del producto Nike con referencia "${ref}" (nombre: "${name}") en nike.com/es.
+
+Devuelve EXACTAMENTE 4 bullet points en español con este formato:
+
+- [Primera característica]
+
+- [Segunda característica]
+
+- [Tercera característica]
+
+- [Cuarta característica]
+
+SOLO los 4 bullets, nada más. Sin introducción ni conclusión.`
     })
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(()=>({}));
+    const err = await res.json().catch(() => ({}));
     throw new Error(err.error?.message || `HTTP ${res.status}`);
   }
 
   const data = await res.json();
-  const text = data.content.filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+  const text = data.output
+    ?.filter(b => b.type === 'message')
+    ?.flatMap(b => b.content)
+    ?.filter(c => c.type === 'output_text')
+    ?.map(c => c.text)
+    ?.join('\n')
+    ?.trim();
+
   if (!text) throw new Error('Respuesta vacía');
   return text;
 }
