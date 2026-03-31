@@ -220,7 +220,14 @@ function handleFile(file) {
     for (let i = 1; i < data.length; i++) {
       const r = data[i];
       if (!r[0]) continue;
-      allRows.push({ ref: r[0]||'', name: r[1]||'', desc: r[2]||'', status: r[2] ? 'ok' : 'empty' });
+      allRows.push({
+  ref: r[0] || '',
+  name: r[1] || '',
+  desc: r[2] || '',
+  status: r[2] ? 'ok' : 'empty',
+  exportStatus: '',
+  url_nike: ''
+});
     }
     document.getElementById('fileName').textContent = file.name;
     document.getElementById('fileDot').className = 'dot active';
@@ -235,8 +242,10 @@ function handleFile(file) {
 // ── Stats ──────────────────────────────────────────────────────────────────
 function updateStats() {
   document.getElementById('statTotal').textContent  = allRows.length;
-  document.getElementById('statFilled').textContent = allRows.filter(r=>r.desc && r.status!=='empty').length;
-  document.getElementById('statEmpty').textContent  = allRows.filter(r=>!r.desc || r.status==='empty').length;
+  document.getElementById('statFilled').textContent =
+  allRows.filter(r => r.desc && ['ok', 'done'].includes(r.status)).length;
+  document.getElementById('statEmpty').textContent =
+  allRows.filter(r => !r.desc && r.status === 'empty').length;
   document.getElementById('statDone').textContent   = allRows.filter(r=>r.status==='done').length;
 }
 
@@ -271,8 +280,15 @@ async function startProcessing() {
   show('progressWrap'); show('btnStop'); hide('btnStart'); hide('btnDownload');
 
   const toProcess = allRows.map((r,i)=>({...r,idx:i})).filter(r=>!r.desc||r.status==='empty');
-  const refCache = {};
-  allRows.forEach(r => { if (r.desc) refCache[r.ref] = r.desc; });
+const refCache = {};
+allRows.forEach(r => {
+  if (r.desc) {
+    refCache[r.ref] = {
+      desc: r.desc,
+      url_nike: r.url_nike || ''
+    };
+  }
+});
 
   log('info', `Iniciando: ${toProcess.length} referencias a procesar`);
   const delay = (parseInt(document.getElementById('delayInput').value)||2) * 1000;
@@ -283,30 +299,51 @@ async function startProcessing() {
 
     const idx = item.idx;
 
-    if (refCache[item.ref]) {
-      allRows[idx].desc = refCache[item.ref];
-      allRows[idx].status = 'done';
-      updateRow(idx); done++;
-      updateProgress(done, toProcess.length, `[CACHÉ] ${item.ref}`);
-      updateStats();
-      log('ok', `${item.ref} → copiado de referencia duplicada`);
-      continue;
-    }
+if (refCache[item.ref]) {
+  allRows[idx].desc = refCache[item.ref].desc;
+  allRows[idx].url_nike = refCache[item.ref].url_nike || '';
+  allRows[idx].status = 'done';
+  allRows[idx].exportStatus = 'OK';
+
+  updateRow(idx);
+  done++;
+  updateProgress(done, toProcess.length, `[CACHÉ] ${item.ref}`);
+  updateStats();
+  log('ok', `${item.ref} → copiado de referencia duplicada`);
+  continue;
+}
 
     allRows[idx].status = 'processing';
     updateRow(idx);
     updateProgress(done, toProcess.length, `Buscando: ${item.ref} — ${item.name}`);
 
-    try {
-      const desc = await fetchDesc(item.ref, item.name);
-      allRows[idx].desc = desc;
-      allRows[idx].status = 'done';
-      refCache[item.ref] = desc;
-      log('ok', `${item.ref} → OK`);
-    } catch(err) {
-      allRows[idx].status = 'error';
-      log('err', `${item.ref} → ${err.message}`);
-    }
+try {
+  const result = await fetchDesc(item.ref, item.name);
+
+  if (result.status === 'OK' && result.description) {
+    allRows[idx].desc = result.description;
+    allRows[idx].url_nike = result.url_nike || '';
+    allRows[idx].status = 'done';
+    allRows[idx].exportStatus = 'OK';
+
+    refCache[item.ref] = {
+      desc: result.description,
+      url_nike: result.url_nike || ''
+    };
+
+    log('ok', `${item.ref} → OK`);
+  } else {
+    allRows[idx].status = 'error';
+    allRows[idx].exportStatus = 'NO ENCONTRADO';
+    allRows[idx].url_nike = '';
+    log('err', `${item.ref} → NO ENCONTRADO`);
+  }
+} catch(err) {
+  allRows[idx].status = 'error';
+  allRows[idx].exportStatus = 'ERROR';
+  allRows[idx].url_nike = '';
+  log('err', `${item.ref} → ${err.message}`);
+}
 
     updateRow(idx); done++;
     updateProgress(done, toProcess.length, `Procesado: ${item.ref}`);
@@ -331,16 +368,37 @@ async function fetchDesc(ref, name) {
 
   const data = await res.json();
 
-  if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
-  return data.description;
+  if (!res.ok || data.error) {
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+
+  return data;
 }
 
 // ── Download ───────────────────────────────────────────────────────────────
 function downloadExcel() {
   const wb = XLSX.utils.book_new();
-  const wsData = [['reference','name','description'], ...allRows.map(r=>[r.ref, r.name, r.desc||''])];
+  const wsData = [[
+  'reference',
+  'name',
+  'description',
+  'status',
+  'url_nike'
+], ...allRows.map(r => [
+  r.ref,
+  r.name,
+  r.desc || '',
+  r.exportStatus || '',
+  r.url_nike || ''
+])];
   const ws = XLSX.utils.aoa_to_sheet(wsData);
-  ws['!cols'] = [{wch:16},{wch:36},{wch:80}];
+  ws['!cols'] = [
+  { wch: 16 },
+  { wch: 36 },
+  { wch: 80 },
+  { wch: 18 },
+  { wch: 60 }
+];
   XLSX.utils.book_append_sheet(wb, ws, 'Hoja1');
   XLSX.writeFile(wb, `DATA_NIKE_UPDATED_${new Date().toISOString().slice(0,10)}.xlsx`);
   log('info','Excel descargado');
